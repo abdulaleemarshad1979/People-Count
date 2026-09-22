@@ -1,7 +1,12 @@
-fuse_score: true
-match_thresh: 0.30
-new_track_thresh: 0.15
-track_buffer: 90
-track_high_thresh: 0.18
-track_low_thresh: 0.05
+# ByteTrack tuned for fixed CCTV people counting.
+# The previous file had match_thresh: 0.30, which demands >=70% box overlap
+# between frames. At CCTV detector speeds (8-15 FPS) a walking person rarely
+# overlaps that much, so IDs broke constantly -> the same person was counted
+# again under a new ID. 0.8 is the Ultralytics default and the right value.
 tracker_type: bytetrack
+track_high_thresh: 0.35   # confident detections used for first-stage matching
+track_low_thresh: 0.10    # weak detections still keep an existing track alive (occlusion)
+new_track_thresh: 0.45    # only fairly confident detections may START a new ID (kills ghost IDs)
+track_buffer: 60          # frames a lost ID is remembered (~4-6 s at detector speed)
+match_thresh: 0.80        # association cost threshold (1 - IoU); was 0.30 = constant ID switches
+fuse_score: true
