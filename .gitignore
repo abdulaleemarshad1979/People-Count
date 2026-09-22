@@ -18,3 +18,7 @@ run.txt
 
 # Backups
 *.bak
+
+# Runtime logs and event exports
+count_events.csv
+*.csv

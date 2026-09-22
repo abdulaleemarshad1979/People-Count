@@ -62,10 +62,7 @@ logging.basicConfig(
 logger = logging.getLogger("pushkaralu")
 
 # ── Best Quality & Low-latency RTSP transport options for OpenCV FFmpeg
-os.environ.setdefault(
-    "OPENCV_FFMPEG_CAPTURE_OPTIONS",
-    "rtsp_transport;tcp|fflags;nobuffer|flags;low_delay|max_delay;500000",
-)
+os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
 
 # Optimize PyTorch CPU thread count if available
 try:
@@ -99,9 +96,7 @@ CONFIG_FILE = BASE_DIR / "config.json"
 EVENT_LOG   = BASE_DIR / os.getenv("EVENT_LOG", "count_events.csv")
 
 # Counting robustness (see counter.py for meaning)
-BAND_RATIO     = float(os.getenv("COUNT_BAND_RATIO", "0.12"))
-CONFIRM_FRAMES = int(os.getenv("COUNT_CONFIRM_FRAMES", "2"))
-MIN_HITS       = int(os.getenv("COUNT_MIN_HITS", "3"))
+BAND_RATIO     = float(os.getenv("COUNT_BAND_RATIO", "0.06"))
 MIN_BOX_H_FRAC = float(os.getenv("MIN_PERSON_HEIGHT", "0.06"))  # ignore boxes shorter than 6% of frame
 NMS_IOU        = float(os.getenv("YOLO_IOU", "0.5"))
 
@@ -263,8 +258,6 @@ class DetectionPipeline:
         self.counter = LineCounter(
             anchor=self.anchor,
             band_ratio=BAND_RATIO,
-            confirm_frames=CONFIRM_FRAMES,
-            min_hits=MIN_HITS,
         )
         self.counter.on_count = self._log_event
 
@@ -454,8 +447,9 @@ class DetectionPipeline:
                 for d in detections:
                     d["trail"] = self.counter.trail(d["track_id"])
                 self.current_detections = detections
-                # Live occupancy: only people visible right now on the IN side, within the line's range
-                self.occupancy = live_inside
+                # Occupancy: live count of people on IN side, or net cumulative room count (IN - OUT)
+                net_tally = max(0, self.counter.count_in - self.counter.count_out)
+                self.occupancy = max(live_inside, net_tally)
                 self.active_tracks = active_cnt
 
             det_count += 1
@@ -501,10 +495,9 @@ class DetectionPipeline:
 
             ann = self._annotate(frame, dets, lp, ln.get("invert", False), occ, ci, co, fps_val, anchor_mode, w, h)
 
-            # High-speed JPEG encoding (Quality 95 for best clarity)
+            # High-speed, high quality JPEG encoding (Quality 85 for smooth streaming)
             encode_params = [
-                cv2.IMWRITE_JPEG_QUALITY, 95,
-                cv2.IMWRITE_JPEG_OPTIMIZE, 1,
+                cv2.IMWRITE_JPEG_QUALITY, 85,
             ]
             success, jpg = cv2.imencode(".jpg", ann, encode_params)
             if success:
@@ -649,6 +642,7 @@ class DetectionPipeline:
                 "in": self.counter.count_in,
                 "out": self.counter.count_out,
                 "occupancy": self.occupancy,
+                "net_occupancy": max(0, self.counter.count_in - self.counter.count_out),
                 "tracks": self.active_tracks,
                 "fps": round(self.fps, 1),
                 "detector_fps": round(self.detector_fps, 1),
@@ -751,6 +745,13 @@ def home():
 
 @app.get("/video-feed")
 def video_feed():
+    if not CAMERA_PASSWORD and not CUSTOM_RTSP_URL:
+        return Response(
+            "ICSEE_CAMERA_PASSWORD is not set. Restart app.py after exporting it.",
+            status=503,
+            mimetype="text/plain",
+        )
+
     resp = Response(
         mjpeg_generator(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
