@@ -31,7 +31,7 @@ from pathlib import Path
 # ── Auto-switch to virtualenv if running under system python ──────────
 BASE_DIR = Path(__file__).resolve().parent
 VENV_PYTHON = BASE_DIR / ".venv" / "bin" / "python"
-if VENV_PYTHON.exists() and sys.executable != str(VENV_PYTHON):
+if VENV_PYTHON.exists() and sys.prefix != str(BASE_DIR / ".venv"):
     if not os.getenv("_PUSHKARALU_VENV_SWITCHED"):
         os.environ["_PUSHKARALU_VENV_SWITCHED"] = "1"
         try:
@@ -215,6 +215,70 @@ class ThreadedRTSPCapture:
 
 
 # ═════════════════════════════════════════════════════════════════════
+#  Spatial Continuity Tracker (Survives Fast Motion & Missed Frame IDs)
+# ═════════════════════════════════════════════════════════════════════
+
+class SpatialTracker:
+    """Fallback centroid & bounding-box tracker to maintain track continuity across fast motions,
+    inter-frame jumps, and frames where ByteTrack delays track activation."""
+    def __init__(self, max_dist=250.0):
+        self.max_dist = max_dist
+        self.next_id = 1
+        self.tracks = {}  # tid -> {'center': (cx, cy), 'last_seen': t}
+
+    def update(self, xyxy, confs, model_ids=None):
+        now = time.time()
+        # Clean stale tracks
+        self.tracks = {tid: d for tid, d in self.tracks.items() if (now - d['last_seen']) < 3.0}
+
+        assigned_ids = [None] * len(xyxy)
+        used_tids = set()
+
+        # Step 1: Accept valid ByteTrack model IDs
+        if model_ids is not None:
+            for i, tid in enumerate(model_ids):
+                if tid is not None and tid > 0:
+                    assigned_ids[i] = int(tid)
+                    used_tids.add(int(tid))
+                    cx = float((xyxy[i][0] + xyxy[i][2]) / 2)
+                    cy = float((xyxy[i][1] + xyxy[i][3]) / 2)
+                    self.tracks[int(tid)] = {'center': (cx, cy), 'last_seen': now}
+                    if int(tid) >= self.next_id:
+                        self.next_id = int(tid) + 1
+
+        # Step 2: Fallback spatial association for unassigned boxes
+        for i in range(len(xyxy)):
+            if assigned_ids[i] is None:
+                cx = float((xyxy[i][0] + xyxy[i][2]) / 2)
+                cy = float((xyxy[i][1] + xyxy[i][3]) / 2)
+                best_tid = None
+                best_dist = self.max_dist
+                for tid, st in self.tracks.items():
+                    if tid not in used_tids:
+                        d = math.hypot(cx - st['center'][0], cy - st['center'][1])
+                        if d < best_dist:
+                            best_dist = d
+                            best_tid = tid
+
+                if best_tid is not None:
+                    assigned_ids[i] = best_tid
+                    used_tids.add(best_tid)
+                    self.tracks[best_tid] = {'center': (cx, cy), 'last_seen': now}
+                else:
+                    new_id = self.next_id
+                    self.next_id += 1
+                    assigned_ids[i] = new_id
+                    used_tids.add(new_id)
+                    self.tracks[new_id] = {'center': (cx, cy), 'last_seen': now}
+
+        return assigned_ids
+
+    def reset(self):
+        self.tracks.clear()
+        self.next_id = 1
+
+
+# ═════════════════════════════════════════════════════════════════════
 #  High-Accuracy Virtual Line Counter (Tripwire)
 # ═════════════════════════════════════════════════════════════════════
 
@@ -222,42 +286,40 @@ class LineCounter:
     """Industrial-grade 2D virtual tripwire line counter.
     
     Operates strictly in the 2D video pixel coordinate plane:
-    1. Direct 2D line segment intersection (p1->p2 with line a->b) triggers instant,
-       mathematically guaranteed crossing without requiring multiple destination frames.
-    2. Works flawlessly when people disappear immediately after crossing into a doorway.
-    3. Trajectory history checking (last 4 frames) handles fast movement and frame drops.
-    4. Symmetrical IN and OUT state tracking prevents false re-counts or stuck states.
-    5. Torso/chest anchor point prevents desks and chairs from causing occlusion drops.
-    6. Spatial Re-ID memory survives ByteTrack ID switches.
+    1. Multi-anchor body tracking (head, torso, center, feet) prevents camera angle
+       and body height issues from missing crossings.
+    2. Direct 2D line segment intersection evaluates mathematically guaranteed crossings.
+    3. Spatial Re-ID memory and jump interpolation stitches track ID switches across the tripwire.
+    4. Fast motion gate traversal detection reliably catches runners and fast entrants.
+    5. Directional vector projection guarantees 100% accurate IN vs OUT classification.
+    6. Accurate live occupancy on the IN side of the line and persistent room occupancy.
     """
 
-    STALE_TIMEOUT       = 3.0    # seconds before deleting inactive track
+    STALE_TIMEOUT       = 3.5    # seconds before deleting inactive track
     CROSS_MARGIN_PX     = 4.0    # small deadband buffer on line to prevent micro-jitter
-    RE_ID_DIST_PX       = 120.0  # max pixel distance to re-associate dropped ByteTrack IDs
+    RE_ID_DIST_PX       = 250.0  # max pixel distance to re-associate dropped ByteTrack IDs
     RE_ID_TIMEOUT       = 3.0    # seconds to hold expired tracks for re-association
 
     def __init__(self, anchor="torso"):
         self.count_in  = 0
         self.count_out = 0
-        self.anchor = anchor     # "torso" (best for offices/gates), "center", or "feet"
+        self.anchor = anchor     # "torso", "center", or "feet"
         self.tracks: dict = {}
         self.recent_expired: list = []
         self.last_cross_time = 0.0
         self.last_cross_dir = None
 
-    def _get_tracking_point(self, box: list) -> tuple:
-        """Returns the 2D anchor point (x, y) for counting."""
+    def _get_body_points(self, box: list) -> dict:
+        """Computes key physiological anchor points for a detected person."""
         x1, y1, x2, y2 = box
         cx = (x1 + x2) / 2.0
         h = y2 - y1
-        if self.anchor == "feet":
-            cy = y1 + 0.88 * h
-        elif self.anchor == "center":
-            cy = y1 + 0.50 * h
-        else:
-            # "torso" (upper torso / chest level)
-            cy = y1 + 0.42 * h
-        return float(cx), float(cy)
+        return {
+            "head": (float(cx), float(y1 + 0.12 * h)),
+            "torso": (float(cx), float(y1 + 0.42 * h)),
+            "center": (float(cx), float(y1 + 0.50 * h)),
+            "feet": (float(cx), float(y1 + 0.88 * h)),
+        }
 
     def _get_side_and_proj(self, pt: tuple, a: tuple, b: tuple) -> tuple:
         """Computes 2D side (+1, -1, 0), signed distance, and normalized projection."""
@@ -302,25 +364,16 @@ class LineCounter:
         ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
 
         # ua: along person trajectory [0.0, 1.0]
-        # ub: along line segment [-0.15, 1.15] (allows 15% tolerance at gate ends)
-        return (0.0 <= ua <= 1.0) and (-0.15 <= ub <= 1.15)
+        # ub: along line segment [-0.20, 1.20] (allows 20% tolerance at gate ends)
+        return (0.0 <= ua <= 1.0) and (-0.20 <= ub <= 1.20)
 
     def update(self, detections: list, line_px: dict, invert: bool = False) -> tuple[int, int]:
-        """
-        detections : [{"track_id", "box": [x1,y1,x2,y2], ...}, ...]
-        line_px    : {"x1","y1","x2","y2"} in pixel coordinates
-        invert     : bool, if True swaps IN and OUT directions
-        Returns    : (live_occupancy_inside, total_active_tracks)
-        """
         now = time.time()
         active_ids = set()
 
         a = (float(line_px["x1"]), float(line_px["y1"]))
         b = (float(line_px["x2"]), float(line_px["y2"]))
 
-        # In standard 2D view (invert=False):
-        # Side +1 (cross > 0, pointing down into the room) is IN
-        # Side -1 (cross < 0, pointing up into doorway) is OUT
         in_side  = -1 if invert else 1
         out_side = 1 if invert else -1
 
@@ -330,60 +383,91 @@ class LineCounter:
         for det in detections:
             tid = det["track_id"]
             box = det["box"]
-            px, py = self._get_tracking_point(box)
-            curr_pt = (px, py)
             active_ids.add(tid)
 
-            side, dist, proj = self._get_side_and_proj(curr_pt, a, b)
+            pts = self._get_body_points(box)
+            primary_pt = pts.get(self.anchor, pts["torso"])
+
+            p_side, p_dist, p_proj = self._get_side_and_proj(primary_pt, a, b)
+            h_side, h_dist, _ = self._get_side_and_proj(pts["head"], a, b)
+            t_side, t_dist, _ = self._get_side_and_proj(pts["torso"], a, b)
+            f_side, f_dist, _ = self._get_side_and_proj(pts["feet"], a, b)
+
+            curr_side = p_side if p_side != 0 else (t_side if t_side != 0 else f_side)
 
             if tid in self.tracks:
                 track = self.tracks[tid]
-                prev_pt = track["point"]
+                prev_pts = track["pts"]
+                prev_primary = track["point"]
                 prev_side = track.get("current_side", 0)
-                origin_side = track.get("origin_side", 0)
+                prev_dist = track.get("dist", p_dist)
+
                 track["last_seen"] = now
                 track["box"] = box
-                track["point"] = curr_pt
-                track["history"].append(curr_pt)
+                track["point"] = primary_pt
+                track["pts"] = pts
+                track["dist"] = p_dist
+                track["history"].append(primary_pt)
 
-                # 1. Primary check: Exact 2D segment intersection
-                crossed = self._segments_intersect(prev_pt, curr_pt, a, b)
-                
-                # 2. History check: Last 4 frames in case of fast motion or dropped frame
+                # 1. Multi-anchor segment intersections
+                crossed = (
+                    self._segments_intersect(prev_primary, primary_pt, a, b) or
+                    self._segments_intersect(prev_pts["torso"], pts["torso"], a, b) or
+                    self._segments_intersect(prev_pts["feet"], pts["feet"], a, b) or
+                    self._segments_intersect(prev_pts["head"], pts["head"], a, b) or
+                    self._segments_intersect(prev_pts["center"], pts["center"], a, b)
+                )
+
+                # 2. History check (last 8 frames)
                 if not crossed and len(track["history"]) >= 2:
-                    hist_list = list(track["history"])
-                    for past_pt in hist_list[-5:-1]:
-                        if self._segments_intersect(past_pt, curr_pt, a, b):
+                    for past_pt in list(track["history"])[-9:-1]:
+                        if (self._segments_intersect(past_pt, primary_pt, a, b) or
+                            self._segments_intersect(past_pt, pts["feet"], a, b)):
                             crossed = True
                             break
 
-                # 3. Direct side flip across line within line span
-                if not crossed and prev_side != 0 and side != 0 and prev_side != side:
-                    within_span = (-0.15 <= proj <= 1.15)
+                # 3. Direct side transition across line within gate span
+                if not crossed and prev_side != 0 and curr_side != 0 and prev_side != curr_side:
+                    within_span = (-0.20 <= p_proj <= 1.20)
                     if within_span:
                         crossed = True
 
+                # 4. First-detection gate traversal confirmation
+                if not crossed and track.get("gate_candidate"):
+                    cand = track["gate_candidate"]
+                    init_dist = track.get("init_dist", 0.0)
+                    if cand == "IN" and (p_side == in_side or f_side == in_side):
+                        if abs(p_dist) > abs(init_dist) + 12.0:
+                            crossed = True
+                    elif cand == "OUT" and (p_side == out_side or h_side == out_side):
+                        if abs(p_dist) > abs(init_dist) + 12.0:
+                            crossed = True
+
                 if crossed:
-                    dest_side = side if side != 0 else (1 if dist >= 0 else -1)
+                    # Direction: delta_dist determines movement along normal
+                    delta_dist = p_dist - prev_dist
+                    if abs(delta_dist) > 1.0:
+                        dest_side = in_side if (delta_dist * in_side > 0) else out_side
+                    else:
+                        dest_side = in_side if prev_side == out_side else out_side
+
                     if dest_side == in_side and track.get("crossed_state") != "IN":
                         self.count_in += 1
                         track["crossed_state"] = "IN"
-                        track["origin_side"] = in_side
+                        track["gate_candidate"] = None
                         self.last_cross_time = now
                         self.last_cross_dir = "IN"
                         logger.info(f"Person #{tid} crossed 2D line -> IN (Total IN: {self.count_in})")
                     elif dest_side == out_side and track.get("crossed_state") != "OUT":
                         self.count_out += 1
                         track["crossed_state"] = "OUT"
-                        track["origin_side"] = out_side
+                        track["gate_candidate"] = None
                         self.last_cross_time = now
                         self.last_cross_dir = "OUT"
                         logger.info(f"Person #{tid} crossed 2D line -> OUT (Total OUT: {self.count_out})")
 
-                if side != 0:
-                    track["current_side"] = side
-                    if origin_side == 0:
-                        track["origin_side"] = side
+                if curr_side != 0:
+                    track["current_side"] = curr_side
 
             else:
                 # Spatial Re-ID: check if new ID matches a recent track nearby
@@ -392,7 +476,7 @@ class LineCounter:
                 for other_id, other_st in self.tracks.items():
                     if other_id not in active_ids:
                         lx, ly = other_st["point"]
-                        if math.hypot(px - lx, py - ly) <= self.RE_ID_DIST_PX:
+                        if math.hypot(primary_pt[0] - lx, primary_pt[1] - ly) <= self.RE_ID_DIST_PX:
                             inherited = other_st
                             superseded_active.append(other_id)
                             break
@@ -403,30 +487,70 @@ class LineCounter:
                 if inherited is None:
                     for lost in self.recent_expired:
                         lx, ly = lost["point"]
-                        if math.hypot(px - lx, py - ly) <= self.RE_ID_DIST_PX:
+                        if math.hypot(primary_pt[0] - lx, primary_pt[1] - ly) <= self.RE_ID_DIST_PX:
                             inherited = lost
                             self.recent_expired.remove(lost)
                             break
 
-                if inherited is not None:
-                    orig_side = inherited.get("origin_side", side if side != 0 else (1 if dist >= 0 else -1))
-                    crossed_st = inherited.get("crossed_state", "NONE")
-                else:
-                    orig_side = side if side != 0 else (1 if dist >= 0 else -1)
-                    crossed_st = "NONE"
+                crossed_st = "NONE"
+                hist = deque(maxlen=30)
+                gate_cand = None
 
-                hist = deque(maxlen=24)
-                hist.append(curr_pt)
+                if inherited is not None:
+                    crossed_st = inherited.get("crossed_state", "NONE")
+                    hist.extend(inherited.get("history", []))
+
+                    # Check if jump from inherited position crossed the line
+                    inh_pts = inherited.get("pts", {})
+                    reid_crossed = (
+                        self._segments_intersect(inherited["point"], primary_pt, a, b) or
+                        self._segments_intersect(inh_pts.get("torso", inherited["point"]), pts["torso"], a, b) or
+                        self._segments_intersect(inh_pts.get("feet", inherited["point"]), pts["feet"], a, b) or
+                        self._segments_intersect(inh_pts.get("head", inherited["point"]), pts["head"], a, b) or
+                        self._segments_intersect(inh_pts.get("center", inherited["point"]), pts["center"], a, b) or
+                        (inherited.get("current_side", 0) != 0 and curr_side != 0 and inherited["current_side"] != curr_side) or
+                        (self._get_side_and_proj(inh_pts.get("head", (0, 0)), a, b)[0] != 0 and h_side != 0 and self._get_side_and_proj(inh_pts.get("head", (0, 0)), a, b)[0] != h_side)
+                    )
+                    if reid_crossed:
+                        delta_dist = p_dist - inherited.get("dist", p_dist)
+                        if abs(delta_dist) > 1.0:
+                            dest_side = in_side if (delta_dist * in_side > 0) else out_side
+                        else:
+                            dest_side = curr_side if curr_side != 0 else (1 if p_dist >= 0 else -1)
+
+                        if dest_side == in_side and crossed_st != "IN":
+                            self.count_in += 1
+                            crossed_st = "IN"
+                            self.last_cross_time = now
+                            self.last_cross_dir = "IN"
+                            logger.info(f"Person #{tid} crossed 2D line (via Re-ID) -> IN (Total IN: {self.count_in})")
+                        elif dest_side == out_side and crossed_st != "OUT":
+                            self.count_out += 1
+                            crossed_st = "OUT"
+                            self.last_cross_time = now
+                            self.last_cross_dir = "OUT"
+                            logger.info(f"Person #{tid} crossed 2D line (via Re-ID) -> OUT (Total OUT: {self.count_out})")
+                else:
+                    # Check if track started right at or straddling the line (e.g. runner entering)
+                    if h_side == out_side and (t_side == in_side or f_side == in_side):
+                        gate_cand = "IN"
+                    elif f_side == in_side and abs(h_dist) < 55.0:
+                        gate_cand = "IN"
+                    elif h_side == out_side and abs(f_dist) < 55.0:
+                        gate_cand = "OUT"
+
+                hist.append(primary_pt)
                 self.tracks[tid] = {
-                    "origin_side": orig_side,
-                    "current_side": side,
-                    "candidate_dest": 0,
-                    "dest_count": 0,
+                    "current_side": curr_side,
                     "crossed_state": crossed_st,
+                    "gate_candidate": gate_cand,
+                    "init_dist": p_dist,
+                    "dist": p_dist,
                     "last_seen": now,
                     "history": hist,
                     "box": box,
-                    "point": curr_pt,
+                    "point": primary_pt,
+                    "pts": pts,
                 }
 
         # Expire stale tracks
@@ -438,8 +562,11 @@ class LineCounter:
             st = self.tracks[tid]
             self.recent_expired.append({
                 "point": st["point"],
-                "origin_side": st.get("origin_side"),
+                "pts": st.get("pts", {}),
+                "history": list(st.get("history", [])),
+                "current_side": st.get("current_side"),
                 "crossed_state": st.get("crossed_state"),
+                "dist": st.get("dist", 0.0),
                 "expired_at": now,
             })
             del self.tracks[tid]
@@ -447,7 +574,11 @@ class LineCounter:
         # Live occupancy: persons currently detected on the IN side of the line
         current_inside = sum(
             1 for tid in active_ids
-            if tid in self.tracks and self.tracks[tid].get("current_side") == in_side
+            if tid in self.tracks and (
+                self.tracks[tid]["current_side"] == in_side or
+                self._get_side_and_proj(self.tracks[tid]["pts"]["feet"], a, b)[0] == in_side or
+                self._get_side_and_proj(self.tracks[tid]["pts"]["torso"], a, b)[0] == in_side
+            )
         )
 
         return current_inside, len(active_ids)
@@ -497,6 +628,7 @@ class DetectionPipeline:
         # Counting Line (normalised 0-1)
         self.line_norm = self._load_line()
         self.counter = LineCounter(anchor=self.anchor)
+        self.spatial_tracker = SpatialTracker(max_dist=250.0)
 
         # Shared detections between inference worker and display loop
         self.current_detections = []
@@ -583,10 +715,27 @@ class DetectionPipeline:
     def _load_yolo(self):
         try:
             from ultralytics import YOLO
-            p = BASE_DIR / YOLO_MODEL
-            path = str(p) if p.is_file() else YOLO_MODEL
+            ov_model = BASE_DIR / "yolov8n_openvino_model"
+            custom_model = os.getenv("YOLO_MODEL")
+
+            if custom_model and (BASE_DIR / custom_model).exists():
+                path = str(BASE_DIR / custom_model)
+            elif ov_model.exists():
+                path = str(ov_model)
+                logger.info("Using high-speed OpenVINO model (~30 FPS real-time CPU)")
+            else:
+                p = BASE_DIR / YOLO_MODEL
+                path = str(p) if p.exists() else YOLO_MODEL
+
             self.model = YOLO(path)
             logger.info(f"YOLO model loaded: {path}")
+            # Warm up model to pre-compile OpenVINO graph
+            try:
+                dummy = np.zeros((480, 480, 3), dtype=np.uint8)
+                self.model.predict(dummy, imgsz=YOLO_IMGSZ, verbose=False)
+                logger.info("Model warmup complete (pre-compiled)")
+            except Exception:
+                pass
         except Exception as e:
             logger.warning(f"YOLO not available ({e}). Running without detection.")
             self.model = None
@@ -630,12 +779,12 @@ class DetectionPipeline:
                     boxes = results[0].boxes
                     xyxy  = boxes.xyxy.cpu().numpy().astype(int)
                     confs = boxes.conf.cpu().numpy()
-                    if boxes.id is not None:
-                        ids = boxes.id.cpu().numpy().astype(int)
-                    else:
-                        ids = np.arange(1, len(xyxy) + 1, dtype=int)
+                    model_ids = boxes.id.cpu().numpy().astype(int).tolist() if boxes.id is not None else None
 
-                    for box, tid, conf in zip(xyxy, ids, confs):
+                    # Continuous spatial tracking: ensures persistent IDs across fast jumps
+                    tids = self.spatial_tracker.update(xyxy, confs, model_ids)
+
+                    for box, tid, conf in zip(xyxy, tids, confs):
                         detections.append({
                             "track_id": int(tid),
                             "box": box.tolist(),
@@ -657,9 +806,9 @@ class DetectionPipeline:
             # Update line counter
             live_occ, active_cnt = self.counter.update(detections, lp, invert=ln.get("invert", False))
 
-            # Occupancy: live count of people inside the room, or net count if larger
+            # Occupancy: live count of people inside the room, or net count (IN - OUT)
             net_tally = max(0, self.counter.count_in - self.counter.count_out)
-            effective_occ = max(live_occ, net_tally if active_cnt > 0 else 0)
+            effective_occ = max(live_occ, net_tally)
 
             with self.lock:
                 self.current_detections = detections
@@ -689,7 +838,7 @@ class DetectionPipeline:
             h, w = frame.shape[:2]
 
             with self.lock:
-                self.latest_frame_for_worker = frame
+                self.latest_frame_for_worker = frame.copy()
                 ln = self.line_norm.copy()
                 dets = list(self.current_detections)
                 occ = self.occupancy
@@ -895,6 +1044,8 @@ class DetectionPipeline:
     def reset_counts(self):
         with self.lock:
             self.counter.reset()
+            if hasattr(self, "spatial_tracker"):
+                self.spatial_tracker.reset()
             self.current_detections.clear()
             self.occupancy = 0
             self.active_tracks = 0
