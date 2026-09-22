@@ -1,0 +1,5 @@
+Flask>=3.0,<4.0
+opencv-python>=4.8,<5.0
+numpy>=1.24
+ultralytics>=8.2
+lapx>=0.10.0

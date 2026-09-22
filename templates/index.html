@@ -1,0 +1,909 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Pushkaralu Line Counter – Best Quality Live AI</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #07090e;
+      --card-bg: #0d121c;
+      --border: #182234;
+      --accent-in: #5ee89c;
+      --accent-out: #5da8f0;
+      --accent-occ: #00f0ff;
+      --accent-line: #00f0ff;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: "SF Pro Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: #d8dde8;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .page {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 12px 18px 36px;
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      letter-spacing: -0.01em;
+      font-weight: 700;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .sub-label {
+      font-size: 0.76rem;
+      color: #64748b;
+      font-weight: 500;
+    }
+    .header-badges {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      border: 1px solid #1e2a3e;
+      background: #101620;
+    }
+    .badge-hd {
+      color: #38bdf8;
+      border-color: #0284c744;
+      background: #082133;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    /* ── Video Area ────────────────────────────────────── */
+    .video-wrap {
+      position: relative;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid #1a2438;
+      box-shadow: 0 16px 48px rgba(0,0,0,0.65);
+      aspect-ratio: 16/9;
+      user-select: none;
+    }
+    #stream {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: high-quality;
+      image-rendering: -webkit-optimize-contrast;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+      z-index: 10;
+    }
+    .line-hint {
+      position: absolute;
+      bottom: 12px;
+      left: 14px;
+      background: rgba(10, 14, 24, 0.86);
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.12);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 0.74rem;
+      color: #94a3b8;
+      pointer-events: none;
+      z-index: 12;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .line-hint b { color: #f1f5f9; }
+
+    /* ── Stats row ─────────────────────────────────────── */
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .stat {
+      text-align: center;
+      padding: 12px 6px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      transition: transform 0.1s;
+    }
+    .stat b {
+      display: block;
+      font-size: 1.95rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+    .stat span {
+      font-size: 0.72rem;
+      color: #6a7590;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
+
+    /* ── Control Center ────────────────────────────────── */
+    .controls-panel {
+      margin-top: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .toolbar-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .btn-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .group-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-right: 4px;
+    }
+    button {
+      padding: 8px 14px;
+      border: 1px solid #202b3e;
+      border-radius: 8px;
+      background: #121824;
+      color: #c8cfe0;
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.82rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+    button:hover {
+      background: #1b2436;
+      color: #f1f5f9;
+      border-color: #2b3952;
+    }
+    button:active {
+      transform: scale(0.98);
+    }
+    button.primary {
+      background: #0d2836;
+      border-color: #00f0ff66;
+      color: #00f0ff;
+    }
+    button.primary:hover {
+      background: #11364a;
+      border-color: #00f0ffaa;
+    }
+    button.active {
+      background: #143324;
+      border-color: #22c55e;
+      color: #86efac;
+    }
+    button.highlight {
+      background: #1e283a;
+      border-color: #38bdf8;
+      color: #38bdf8;
+    }
+    button.danger {
+      background: #271418;
+      border-color: #7f1d1d;
+      color: #fca5a5;
+    }
+    button.danger:hover {
+      background: #381a20;
+      border-color: #ef4444;
+    }
+
+    /* ── Advanced Sliders & Toggles ────────────────────── */
+    .tuning-row {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      align-items: center;
+      padding-top: 10px;
+      border-top: 1px solid #141c2b;
+      font-size: 0.8rem;
+    }
+    .tuning-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .tuning-item label {
+      color: #94a3b8;
+      font-size: 0.78rem;
+      font-weight: 500;
+    }
+    input[type=range] {
+      accent-color: #00f0ff;
+      cursor: pointer;
+      width: 100px;
+    }
+    .val-badge {
+      display: inline-block;
+      min-width: 38px;
+      text-align: right;
+      font-weight: 700;
+      color: #38bdf8;
+      font-size: 0.78rem;
+    }
+
+    .help {
+      padding: 12px 16px;
+      border-radius: 9px;
+      background: #101622;
+      border: 1px solid #1e2a3e;
+      font-size: 0.8rem;
+      color: #8896b0;
+      line-height: 1.55;
+      display: none;
+    }
+    .help.show { display: block; }
+    .help b { color: #f1f5f9; }
+
+    @media(max-width: 720px) {
+      .stats { grid-template-columns: repeat(3, 1fr); }
+      .stat b { font-size: 1.45rem; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="brand">
+      <h1>Pushkaralu Line Counter</h1>
+      <span class="sub-label">Straight Tripwire Virtual Gate</span>
+    </div>
+    <div class="header-badges">
+      <div class="badge badge-hd" id="res-badge">
+        <span>HD 1280x720</span>
+      </div>
+      <div class="badge" id="badge" style="color:#f0c850">
+        <span class="dot"></span>
+        <span id="badge-text">Connecting</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Live Video & Interactive Line Canvas ── -->
+  <div class="video-wrap" id="video-container">
+    <img id="stream" src="/video-feed" alt="Live camera stream">
+    <canvas id="overlay"></canvas>
+    <div class="line-hint">
+      <span>🔘 <b>Drag Handle A or B</b> to angle/position</span>
+      <span>•</span>
+      <span>✋ <b>Drag line body</b> to move</span>
+      <span>•</span>
+      <span>⇄ <b>Flip Direction</b> to swap IN / OUT</span>
+    </div>
+  </div>
+
+  <!-- ── Real-time Counters ── -->
+  <div class="stats">
+    <div class="stat"><b id="v-in" style="color:var(--accent-in)">0</b><span>IN (Entered)</span></div>
+    <div class="stat"><b id="v-out" style="color:var(--accent-out)">0</b><span>OUT (Exited)</span></div>
+    <div class="stat"><b id="v-occ" style="color:var(--accent-occ)">0</b><span>Live Occupancy</span></div>
+    <div class="stat"><b id="v-trk" style="color:#94a3b8">0</b><span>Active Tracks</span></div>
+    <div class="stat"><b id="v-fps" style="color:#38bdf8">0</b><span>Stream FPS</span></div>
+  </div>
+
+  <!-- ── Interactive Control Panel ── -->
+  <div class="controls-panel">
+    <!-- Row 1: Direction & Presets -->
+    <div class="toolbar-row">
+      <div class="btn-group">
+        <button class="primary" onclick="flipDirection()" title="Swap IN and OUT sides">
+          ⇄ Flip Direction (Swap IN/OUT)
+        </button>
+        <span class="group-label" style="margin-left:8px;">Presets:</span>
+        <button class="highlight" onclick="applyPreset('doorway')" title="Place line across the background doorway">🚪 Doorway Gate</button>
+        <button onclick="applyPreset('horizontal')" title="Full width horizontal gate">― Full Width</button>
+        <button onclick="applyPreset('vertical')" title="Vertical gate down center">| Vertical</button>
+      </div>
+
+      <div class="btn-group">
+        <span class="group-label">Adjust:</span>
+        <button onclick="adjustLength(1.15)" title="Extend line length">➕ Extend</button>
+        <button onclick="adjustLength(0.85)" title="Shorten line length">➖ Shorten</button>
+        <button id="btn-draw" onclick="toggleDrawMode()" title="Click and drag to draw a new line">📐 Draw Line</button>
+      </div>
+
+      <div class="btn-group">
+        <button onclick="toggleFullscreen()" title="Full screen view">⛶ Fullscreen</button>
+        <button class="danger" onclick="resetCounts()">↺ Reset Counts</button>
+        <button onclick="toggleHelp()">? Help</button>
+      </div>
+    </div>
+
+    <!-- Row 2: Accuracy & Tracking Customization -->
+    <div class="tuning-row">
+      <div class="tuning-item">
+        <label>Tracking Anchor:</label>
+        <button id="btn-anchor" onclick="toggleAnchor()" title="Torso anchor is immune to desk and chair occlusions">
+          👤 Torso / Chest (Best for Desks/Offices)
+        </button>
+      </div>
+
+      <div class="tuning-item">
+        <label for="conf-slider">YOLO Confidence:</label>
+        <input type="range" id="conf-slider" min="10" max="75" value="22" oninput="onConfidenceChange(this.value)">
+        <span class="val-badge" id="conf-val">22%</span>
+      </div>
+
+      <div class="tuning-item" style="margin-left:auto;">
+        <span style="font-size:0.75rem; color:#64748b;" id="line-coords-info">Line: A (38%, 70%) → B (54%, 70%)</span>
+      </div>
+    </div>
+
+    <div class="help" id="help-box">
+      <b>Virtual Tripwire Line Counter:</b><br>
+      • <b>Doorway Gate (Recommended):</b> Click <b>🚪 Doorway Gate</b> to place the counting line directly across the entrance doorway. This ensures only people entering or leaving through the door are counted!<br>
+      • <b>Torso Anchor (Default):</b> Uses chest/torso level so computer desks, monitors, and office chairs do NOT cause jumping or false counts.<br>
+      • <b>Live Occupancy (OCC):</b> Shows the real-time count of people currently detected inside the room on the IN side of the line.<br>
+      • <b>Flip Direction:</b> If the green <b>IN ►</b> arrow is not pointing into the room, click <b>⇄ Flip Direction</b> to swap IN and OUT sides instantly.
+    </div>
+  </div>
+</div>
+
+<script>
+const EL = id => document.getElementById(id);
+const img = EL("stream");
+const canvas = EL("overlay");
+const ctx = canvas.getContext("2d");
+
+/* ═══ Line State (Normalized 0.0 - 1.0) ══════════════════════════ */
+let line = { x1: 0.43, y1: 0.64, x2: 0.60, y2: 0.58, invert: false };
+let currentAnchor = "torso";
+let currentConfidence = 0.22;
+
+/* ═══ Interactive Drag & Draw State ═════════════════════════════ */
+let isInteracting = false;
+let interactionMode = null; // "p1", "p2", "move", "draw"
+let dragStart = { x: 0, y: 0, nx: 0, ny: 0 };
+let lineStart = { ...line };
+let drawMode = false;
+let hoveredElement = null;
+
+const HANDLE_RADIUS = 8;
+const HIT_THRESHOLD = 14;
+
+/* ═══ Resize Canvas to Match Stream Video Dimensions ══════════════ */
+function sizeCanvas() {
+  if (img.clientWidth > 0 && img.clientHeight > 0) {
+    if (canvas.width !== img.clientWidth || canvas.height !== img.clientHeight) {
+      canvas.width  = img.clientWidth;
+      canvas.height = img.clientHeight;
+      renderOverlay();
+    }
+  }
+}
+window.addEventListener("resize", sizeCanvas);
+img.addEventListener("load", sizeCanvas);
+setInterval(sizeCanvas, 500);
+
+/* ═══ Convert Normalised Line to Canvas Pixels ════════════════════ */
+function getPixelLine() {
+  const w = canvas.width, h = canvas.height;
+  const p1 = { x: line.x1 * w, y: line.y1 * h };
+  const p2 = { x: line.x2 * w, y: line.y2 * h };
+  const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+  const length = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+  return { p1, p2, mid, length, w, h };
+}
+
+/* ═══ Render Interactive Overlay ══════════════════════════════════ */
+function renderOverlay() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const L = getPixelLine();
+  if (L.length < 5) return;
+
+  const dx = L.p2.x - L.p1.x;
+  const dy = L.p2.y - L.p1.y;
+  let nx = -dy / L.length;
+  let ny = dx / L.length;
+
+  if (line.invert) {
+    nx = -nx;
+    ny = -ny;
+  }
+
+  // Draw main glow line
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(L.p1.x, L.p1.y);
+  ctx.lineTo(L.p2.x, L.p2.y);
+  ctx.strokeStyle = isInteracting ? "#00f0ff" : "rgba(0, 240, 255, 0.9)";
+  ctx.lineWidth = isInteracting ? 3.5 : 2.5;
+  if (drawMode) ctx.setLineDash([8, 5]);
+  ctx.stroke();
+  ctx.restore();
+
+  // Draw End Handle A (circle)
+  drawHandle(L.p1.x, L.p1.y, "A", hoveredElement === "p1");
+
+  // Draw End Handle B (circle)
+  drawHandle(L.p2.x, L.p2.y, "B", hoveredElement === "p2");
+
+  // Draw Midpoint Move Handle (circle with cross)
+  ctx.beginPath();
+  ctx.arc(L.mid.x, L.mid.y, hoveredElement === "move" ? HANDLE_RADIUS + 3 : HANDLE_RADIUS - 1, 0, Math.PI * 2);
+  ctx.fillStyle = hoveredElement === "move" ? "#38bdf8" : "rgba(14, 20, 32, 0.9)";
+  ctx.fill();
+  ctx.strokeStyle = "#00f0ff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Direction Arrows & Badges at Midpoint
+  const arrowDist = 34;
+  
+  // IN arrow (Green, points in IN direction)
+  const inStartX = L.mid.x + nx * 8;
+  const inStartY = L.mid.y + ny * 8;
+  const inEndX   = L.mid.x + nx * arrowDist;
+  const inEndY   = L.mid.y + ny * arrowDist;
+  drawArrow(inStartX, inStartY, inEndX, inEndY, "#5ee89c");
+  drawTextBadge(inEndX + nx * 10, inEndY + ny * 10, "IN ►", "#5ee89c", "rgba(10, 30, 20, 0.85)");
+
+  // OUT arrow (Blue, points in OUT direction)
+  const outStartX = L.mid.x - nx * 8;
+  const outStartY = L.mid.y - ny * 8;
+  const outEndX   = L.mid.x - nx * arrowDist;
+  const outEndY   = L.mid.y - ny * arrowDist;
+  drawArrow(outStartX, outStartY, outEndX, outEndY, "#5da8f0");
+  drawTextBadge(outEndX - nx * 10, outEndY - ny * 10, "◄ OUT", "#5da8f0", "rgba(10, 20, 36, 0.85)");
+
+  // Length & info badge
+  const lenText = `${Math.round(L.length)} px`;
+  ctx.font = "bold 11px system-ui";
+  const tw = ctx.measureText(lenText).width;
+  ctx.fillStyle = "rgba(10, 14, 24, 0.82)";
+  ctx.fillRect(L.mid.x - tw / 2 - 6, L.mid.y - 28, tw + 12, 18);
+  ctx.strokeStyle = "rgba(0, 240, 255, 0.4)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(L.mid.x - tw / 2 - 6, L.mid.y - 28, tw + 12, 18);
+  ctx.fillStyle = "#00f0ff";
+  ctx.fillText(lenText, L.mid.x - tw / 2, L.mid.y - 15);
+
+  // Update footer info
+  EL("line-coords-info").textContent = 
+    `Line: A (${Math.round(line.x1 * 100)}%, ${Math.round(line.y1 * 100)}%) → B (${Math.round(line.x2 * 100)}%, ${Math.round(line.y2 * 100)}%)`;
+}
+
+function drawHandle(x, y, label, isHovered) {
+  ctx.beginPath();
+  ctx.arc(x, y, isHovered ? HANDLE_RADIUS + 3 : HANDLE_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = isHovered ? "#ffffff" : "#00f0ff";
+  ctx.fill();
+  ctx.strokeStyle = "#080b12";
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+
+  ctx.font = "bold 10px system-ui";
+  ctx.fillStyle = isHovered ? "#00f0ff" : "#ffffff";
+  ctx.fillText(label, x - 3.5, y + 3.5);
+}
+
+function drawArrow(fromX, fromY, toX, toY, color) {
+  const headLen = 9;
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle - Math.PI / 6), toY - headLen * Math.sin(angle - Math.PI / 6));
+  ctx.lineTo(toX - headLen * Math.cos(angle + Math.PI / 6), toY - headLen * Math.sin(angle + Math.PI / 6));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawTextBadge(x, y, text, textColor, bgColor) {
+  ctx.font = "bold 11px system-ui";
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = bgColor;
+  ctx.fillRect(x - tw / 2 - 5, y - 9, tw + 10, 18);
+  ctx.strokeStyle = textColor;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x - tw / 2 - 5, y - 9, tw + 10, 18);
+  ctx.fillStyle = textColor;
+  ctx.fillText(text, x - tw / 2, y + 4);
+}
+
+/* ═══ Hit Testing ═════════════════════════════════════════════════ */
+function distToSegment(px, py, x1, y1, x2, y2) {
+  const l2 = (x2 - x1) ** 2 + (y2 - y1) ** 2;
+  if (l2 === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * (x2 - x1)), py - (y1 + t * (y2 - y1)));
+}
+
+function hitTest(x, y) {
+  const L = getPixelLine();
+  if (Math.hypot(x - L.p1.x, y - L.p1.y) <= HIT_THRESHOLD) return "p1";
+  if (Math.hypot(x - L.p2.x, y - L.p2.y) <= HIT_THRESHOLD) return "p2";
+  if (Math.hypot(x - L.mid.x, y - L.mid.y) <= HIT_THRESHOLD + 2) return "move";
+  if (distToSegment(x, y, L.p1.x, L.p1.y, L.p2.x, L.p2.y) <= HIT_THRESHOLD) return "move";
+  return null;
+}
+
+function getCursorForHit(hit) {
+  if (drawMode) return "crosshair";
+  switch (hit) {
+    case "p1":
+    case "p2": return "pointer";
+    case "move": return "grab";
+    default: return "default";
+  }
+}
+
+/* ═══ Pointer Event Handlers ══════════════════════════════════════ */
+function getCoords(e) {
+  const r = canvas.getBoundingClientRect();
+  const cx = e.touches ? e.touches[0].clientX : e.clientX;
+  const cy = e.touches ? e.touches[0].clientY : e.clientY;
+  return {
+    x: cx - r.left,
+    y: cy - r.top,
+    nx: Math.max(0, Math.min(1, (cx - r.left) / canvas.width)),
+    ny: Math.max(0, Math.min(1, (cy - r.top) / canvas.height)),
+  };
+}
+
+canvas.addEventListener("pointerdown", e => {
+  e.preventDefault();
+  canvas.setPointerCapture(e.pointerId);
+  const p = getCoords(e);
+  dragStart = { x: p.x, y: p.y, nx: p.nx, ny: p.ny };
+  lineStart = { ...line };
+
+  if (drawMode) {
+    interactionMode = "draw";
+    line.x1 = p.nx;
+    line.y1 = p.ny;
+    line.x2 = p.nx;
+    line.y2 = p.ny;
+    isInteracting = true;
+    renderOverlay();
+    return;
+  }
+
+  const hit = hitTest(p.x, p.y);
+  if (hit) {
+    interactionMode = hit;
+    isInteracting = true;
+    if (hit === "move") canvas.style.cursor = "grabbing";
+    renderOverlay();
+  }
+});
+
+canvas.addEventListener("pointermove", e => {
+  const p = getCoords(e);
+
+  if (!isInteracting) {
+    const hit = hitTest(p.x, p.y);
+    if (hit !== hoveredElement) {
+      hoveredElement = hit;
+      canvas.style.cursor = getCursorForHit(hit);
+      renderOverlay();
+    }
+    return;
+  }
+
+  const dx = p.nx - dragStart.nx;
+  const dy = p.ny - dragStart.ny;
+
+  if (interactionMode === "move") {
+    const x1 = Math.max(0, Math.min(1, lineStart.x1 + dx));
+    const y1 = Math.max(0, Math.min(1, lineStart.y1 + dy));
+    const x2 = Math.max(0, Math.min(1, lineStart.x2 + dx));
+    const y2 = Math.max(0, Math.min(1, lineStart.y2 + dy));
+    line.x1 = x1;
+    line.y1 = y1;
+    line.x2 = x2;
+    line.y2 = y2;
+  } else if (interactionMode === "p1") {
+    line.x1 = p.nx;
+    line.y1 = p.ny;
+  } else if (interactionMode === "p2") {
+    line.x2 = p.nx;
+    line.y2 = p.ny;
+  } else if (interactionMode === "draw") {
+    line.x2 = p.nx;
+    line.y2 = p.ny;
+  }
+
+  renderOverlay();
+});
+
+async function finishInteraction(e) {
+  if (!isInteracting) return;
+  isInteracting = false;
+  canvas.style.cursor = "default";
+
+  const len = Math.hypot(line.x2 - line.x1, line.y2 - line.y1);
+  if (len > 0.03) {
+    await saveLine();
+  } else {
+    line = { ...lineStart };
+  }
+
+  if (drawMode) {
+    toggleDrawMode();
+  }
+
+  interactionMode = null;
+  renderOverlay();
+}
+
+canvas.addEventListener("pointerup", finishInteraction);
+canvas.addEventListener("pointercancel", finishInteraction);
+
+/* ═══ Save Line to Backend ════════════════════════════════════════ */
+async function saveLine() {
+  try {
+    const res = await fetch("/api/line", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(line),
+    });
+    const d = await res.json();
+    if (d.line) {
+      line = d.line;
+      renderOverlay();
+    }
+  } catch(e) {
+    console.error("Save line failed:", e);
+  }
+}
+
+async function flipDirection() {
+  try {
+    const res = await fetch("/api/line/flip", { method: "POST" });
+    const d = await res.json();
+    if (d.line) {
+      line = d.line;
+      renderOverlay();
+    }
+  } catch(e) {
+    console.error("Flip failed:", e);
+  }
+}
+
+/* ═══ Presets & Adjustments ═══════════════════════════════════════ */
+function applyPreset(type) {
+  if (type === "doorway") {
+    // Clean 2D horizontal tripwire across entrance doorway
+    line.x1 = 0.43; line.y1 = 0.64;
+    line.x2 = 0.60; line.y2 = 0.58;
+    line.invert = false;
+  } else if (type === "horizontal") {
+    line.x1 = 0.05; line.y1 = 0.75;
+    line.x2 = 0.95; line.y2 = 0.75;
+  } else if (type === "vertical") {
+    line.x1 = 0.50; line.y1 = 0.15;
+    line.x2 = 0.50; line.y2 = 0.85;
+  }
+  renderOverlay();
+  saveLine();
+}
+
+function adjustLength(factor) {
+  const mx = (line.x1 + line.x2) / 2;
+  const my = (line.y1 + line.y2) / 2;
+  const dx = (line.x2 - line.x1) / 2;
+  const dy = (line.y2 - line.y1) / 2;
+
+  let newX1 = mx - dx * factor;
+  let newY1 = my - dy * factor;
+  let newX2 = mx + dx * factor;
+  let newY2 = my + dy * factor;
+
+  line.x1 = Math.max(0.01, Math.min(0.99, newX1));
+  line.y1 = Math.max(0.01, Math.min(0.99, newY1));
+  line.x2 = Math.max(0.01, Math.min(0.99, newX2));
+  line.y2 = Math.max(0.01, Math.min(0.99, newY2));
+
+  renderOverlay();
+  saveLine();
+}
+
+function toggleDrawMode() {
+  drawMode = !drawMode;
+  const btn = EL("btn-draw");
+  if (drawMode) {
+    btn.classList.add("active");
+    btn.textContent = "📐 Click & Drag to Draw";
+    canvas.style.cursor = "crosshair";
+  } else {
+    btn.classList.remove("active");
+    btn.textContent = "📐 Draw Line";
+    canvas.style.cursor = "default";
+  }
+}
+
+/* ═══ Tracking Anchor & Confidence Customization ══════════════════ */
+async function toggleAnchor() {
+  currentAnchor = (currentAnchor === "torso") ? "feet" : "torso";
+  updateAnchorButton();
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ anchor: currentAnchor }),
+  });
+}
+
+function updateAnchorButton() {
+  const btn = EL("btn-anchor");
+  if (currentAnchor === "torso") {
+    btn.textContent = "👤 Torso / Chest (Best for Desks/Offices)";
+    btn.classList.add("active");
+  } else {
+    btn.textContent = "👟 Feet (Ground Plane)";
+    btn.classList.remove("active");
+  }
+}
+
+let confTimeout = null;
+function onConfidenceChange(val) {
+  EL("conf-val").textContent = `${val}%`;
+  currentConfidence = val / 100.0;
+  clearTimeout(confTimeout);
+  confTimeout = setTimeout(async () => {
+    await fetch("/api/config", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confidence: currentConfidence }),
+    });
+  }, 250);
+}
+
+/* ═══ Fullscreen Toggle ═══════════════════════════════════════════ */
+function toggleFullscreen() {
+  const wrap = EL("video-container");
+  if (!document.fullscreenElement) {
+    wrap.requestFullscreen().catch(err => {
+      alert(`Error enabling fullscreen: ${err.message}`);
+    });
+  } else {
+    document.exitFullscreen();
+  }
+}
+
+/* ═══ Stats Polling ═══════════════════════════════════════════════ */
+async function poll() {
+  try {
+    const r = await fetch("/api/stats");
+    const d = await r.json();
+    EL("v-in").textContent  = d.in;
+    EL("v-out").textContent = d.out;
+    EL("v-occ").textContent = d.occupancy;
+    EL("v-trk").textContent = d.tracks;
+    EL("v-fps").textContent = d.fps;
+
+    if (d.resolution) {
+      EL("res-badge").textContent = `HD ${d.resolution}`;
+    }
+
+    const b = EL("badge"), bt = EL("badge-text");
+    if (d.status === "online") {
+      b.style.color = "#5ee89c";
+      bt.textContent = "Live";
+    } else if (d.status === "connecting" || d.status === "reconnecting") {
+      b.style.color = "#f0c850";
+      bt.textContent = "Connecting";
+    } else if (d.status === "no_password") {
+      b.style.color = "#f06060";
+      bt.textContent = "No Password";
+    } else {
+      b.style.color = "#f06060";
+      bt.textContent = "Offline";
+    }
+
+    // Sync line from backend if not actively dragging
+    if (!isInteracting && d.line) {
+      if (Math.abs(line.x1 - d.line.x1) > 0.003 || Math.abs(line.y1 - d.line.y1) > 0.003 ||
+          Math.abs(line.x2 - d.line.x2) > 0.003 || Math.abs(line.y2 - d.line.y2) > 0.003 ||
+          line.invert !== d.line.invert) {
+        line = d.line;
+        renderOverlay();
+      }
+    }
+
+    // Sync initial anchor & confidence if provided
+    if (d.anchor && d.anchor !== currentAnchor) {
+      currentAnchor = d.anchor;
+      updateAnchorButton();
+    }
+    if (d.confidence && Math.abs(currentConfidence - d.confidence) > 0.04) {
+      currentConfidence = d.confidence;
+      EL("conf-slider").value = Math.round(d.confidence * 100);
+      EL("conf-val").textContent = `${Math.round(d.confidence * 100)}%`;
+    }
+  } catch (_) {}
+}
+setInterval(poll, 350);
+poll();
+
+/* ═══ Stream Error Auto-Reconnect ═════════════════════════════════ */
+img.addEventListener("error", () => {
+  setTimeout(() => { img.src = "/video-feed?t=" + Date.now(); }, 1500);
+});
+
+/* ═══ Controls ════════════════════════════════════════════════════ */
+async function resetCounts() {
+  await fetch("/api/reset", { method: "POST" });
+  poll();
+}
+
+function toggleHelp() {
+  EL("help-box").classList.toggle("show");
+}
+
+// Initial draw
+setTimeout(() => {
+  sizeCanvas();
+  updateAnchorButton();
+}, 200);
+</script>
+</body>
+</html>

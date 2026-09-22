@@ -1,0 +1,20 @@
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.log
+
+# Credentials and local execution secrets
+run.txt
+.env
+*.secret
+
+# Large AI model weights and compiled runtimes (Ultralytics auto-downloads on start)
+*.pt
+*_openvino_model/
+
+# Backups
+*.bak

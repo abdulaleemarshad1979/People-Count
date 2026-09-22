@@ -1,0 +1,18 @@
+#!/bin/bash
+# Example launch script for Pushkaralu Line Counter
+# Configure your camera credentials and RTSP endpoint below:
+
+export ICSEE_CAMERA_IP="192.168.1.10"
+export ICSEE_CAMERA_USER="admin"
+export ICSEE_CAMERA_PASSWORD="YOUR_PASSWORD_HERE"
+export ICSEE_CAMERA_PORT="554"
+export ICSEE_CAMERA_CHANNEL="1"
+export ICSEE_CAMERA_STREAM="0"  # 0=Main HD stream, 1=Sub stream
+
+# Optional overrides:
+# export RTSP_URL="rtsp://admin:password@192.168.1.10:554/stream0"
+# export YOLO_MODEL="yolov8n.pt"
+# export YOLO_CONFIDENCE="0.22"
+# export YOLO_IMGSZ="480"
+
+python3 app.py
